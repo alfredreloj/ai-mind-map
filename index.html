@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI Mind Map</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --accent: #4db6ac;
+  --accent-dim: #1a3a38;
+  --accent-hover: #1f4a47;
+  --n0: #00796b; --n1: #26a69a; --n2: #4db6ac; --n3: #80cbc4;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #0f1117;
+  color: #e2e8f0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Toolbar ─────────────────────────────────────────────────────────────── */
+#toolbar {
+  background: #1a1d27;
+  border-bottom: 1px solid #2d3148;
+  padding: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  flex-shrink: 0;
+  z-index: 20;
+}
+.trow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+#topicInput {
+  flex: 1; min-width: 200px;
+  background: #252836; border: 1px solid #3d4266;
+  color: #e2e8f0; border-radius: 6px;
+  padding: 7px 12px; font-size: 14px; outline: none;
+  transition: border-color .2s;
+}
+#topicInput:focus { border-color: var(--accent); }
+#topicInput::placeholder { color: #5a6080; }
+
+button {
+  background: #252836; border: 1px solid #3d4266;
+  color: #e2e8f0; border-radius: 6px;
+  padding: 7px 14px; font-size: 13px;
+  cursor: pointer; white-space: nowrap;
+  transition: background .15s, border-color .15s;
+}
+button:hover { background: #2e3347; border-color: #5a6080; }
+button:active { background: #3a3f5c; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+
+#genBtn {
+  background: var(--accent-dim); border-color: var(--accent);
+  color: var(--accent); font-weight: 700; padding: 7px 20px;
+}
+#genBtn:hover:not(:disabled) { background: var(--accent-hover); }
+
+label { font-size: 12px; color: #8b93b0; white-space: nowrap; }
+
+select {
+  background: #252836; border: 1px solid #3d4266;
+  color: #e2e8f0; border-radius: 6px;
+  padding: 7px 10px; font-size: 13px;
+  cursor: pointer; outline: none;
+}
+select:focus { border-color: var(--accent); }
+
+.swatch {
+  width: 24px; height: 24px; border-radius: 50%; padding: 0;
+  border: 2px solid transparent; cursor: pointer;
+  transition: transform .15s, border-color .15s;
+}
+.swatch:hover { transform: scale(1.18); }
+.swatch.on { border-color: #fff; }
+
+/* ── Canvas ──────────────────────────────────────────────────────────────── */
+#wrap {
+  flex: 1; overflow: hidden; position: relative;
+  cursor: grab;
+}
+#wrap.panning { cursor: grabbing; }
+
+svg { width: 100%; height: 100%; display: block; }
+
+/* ── Status bar ──────────────────────────────────────────────────────────── */
+#status {
+  position: absolute; bottom: 12px; left: 50%;
+  transform: translateX(-50%);
+  background: #1a1d27cc; border: 1px solid #3d4266;
+  border-radius: 20px; padding: 5px 16px;
+  font-size: 13px; color: #8b93b0;
+  pointer-events: none; backdrop-filter: blur(4px);
+  transition: opacity .3s; white-space: nowrap;
+}
+#status.hide { opacity: 0; }
+
+/* ── Context menu ────────────────────────────────────────────────────────── */
+#ctx {
+  position: fixed; display: none;
+  background: #1e2130; border: 1px solid #3d4266;
+  border-radius: 8px; padding: 4px 0;
+  z-index: 999; min-width: 155px;
+  box-shadow: 0 8px 24px #0009;
+}
+#ctx.show { display: block; }
+.ci {
+  padding: 8px 16px; font-size: 13px;
+  color: #c8d0e8; cursor: pointer;
+  transition: background .1s;
+}
+.ci:hover { background: #2a2f4a; }
+.ci.red { color: #f87171; }
+.csep { height: 1px; background: #2d3148; margin: 4px 0; }
+
+/* ── Inline rename ───────────────────────────────────────────────────────── */
+#rin {
+  position: fixed; display: none;
+  background: #1e2130; border: 1px solid var(--accent);
+  border-radius: 6px; padding: 4px 8px;
+  color: #e2e8f0; font-size: 13px;
+  z-index: 1000; min-width: 110px; outline: none;
+}
+
+/* ── Spinner ─────────────────────────────────────────────────────────────── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.sp {
+  display: inline-block; width: 13px; height: 13px;
+  border: 2px solid #3d4266; border-top-color: var(--accent);
+  border-radius: 50%; animation: spin .65s linear infinite;
+  vertical-align: middle; margin-right: 6px;
+}
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <div class="trow">
+    <input id="topicInput" type="text" placeholder="Enter a topic — e.g. Quantum Computing, Renaissance Art…" />
+    <button id="genBtn">Generate</button>
+  </div>
+  <div class="trow">
+    <label>Depth</label>
+    <select id="depthSel">
+      <option value="2">2</option>
+      <option value="3" selected>3</option>
+      <option value="4">4</option>
+    </select>
+
+    <label>Layout</label>
+    <select id="layoutSel">
+      <option value="radial">Radial</option>
+      <option value="tree">Tree</option>
+    </select>
+
+    <label>Theme</label>
+    <button class="swatch on" data-t="teal"   style="background:#4db6ac" title="Teal"></button>
+    <button class="swatch"    data-t="purple" style="background:#ab7ce8" title="Purple"></button>
+    <button class="swatch"    data-t="coral"  style="background:#f06b6b" title="Coral"></button>
+    <button class="swatch"    data-t="blue"   style="background:#60a5fa" title="Blue"></button>
+    <button class="swatch"    data-t="amber"  style="background:#fbbf24" title="Amber"></button>
+
+    <button id="undoBtn">↩ Undo</button>
+    <button id="regenBtn">⟳ Regen</button>
+    <button id="fitBtn">⤢ Fit</button>
+  </div>
+</div>
+
+<div id="wrap">
+  <svg id="svg">
+    <defs>
+      <filter id="dropshadow">
+        <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0007"/>
+      </filter>
+    </defs>
+    <g id="root"></g>
+  </svg>
+  <div id="status">Enter a topic and click Generate</div>
+</div>
+
+<div id="ctx">
+  <div class="ci" id="cAdd">＋ Add Child</div>
+  <div class="ci" id="cRen">✎ Rename</div>
+  <div class="csep"></div>
+  <div class="ci red" id="cDel">✕ Delete</div>
+</div>
+<input id="rin" type="text" />
+
+<script>
+// ── Themes ──────────────────────────────────────────────────────────────────
+const THEMES = {
+  teal:   {a:'#4db6ac', ab:'#1a3a38', ah:'#1f4a47', c:['#00796b','#26a69a','#4db6ac','#80cbc4']},
+  purple: {a:'#ab7ce8', ab:'#2e1f4a', ah:'#3a2860', c:['#7c3aed','#9c5cf0','#ab7ce8','#c4a3f0']},
+  coral:  {a:'#f06b6b', ab:'#3d1f1f', ah:'#4d2828', c:['#c0392b','#e74c3c','#f06b6b','#f5a0a0']},
+  blue:   {a:'#60a5fa', ab:'#1e2d4a', ah:'#253860', c:['#1d4ed8','#3b82f6','#60a5fa','#93c5fd']},
+  amber:  {a:'#fbbf24', ab:'#3a2e10', ah:'#4a3a18', c:['#d97706','#f59e0b','#fbbf24','#fcd34d']},
+};
+
+// ── State ────────────────────────────────────────────────────────────────────
+let theme = 'teal';
+let layout = 'radial';
+let depth = 3;
+let topic = '';
+let tree = null;
+let undos = [];
+let vt = {x:0, y:0, s:1};
+let ctxNode = null;
+
+// drag state
+let dragNode = null, dragOffX = 0, dragOffY = 0, dragMoved = false;
+
+// ── Elements ─────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const svgEl   = $('svg');
+const rootG   = $('root');
+const wrap    = $('wrap');
+const statEl  = $('status');
+const ctxEl   = $('ctx');
+const rinEl   = $('rin');
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+let statTimer;
+function stat(msg, sticky = false) {
+  statEl.textContent = msg;
+  statEl.classList.remove('hide');
+  clearTimeout(statTimer);
+  if (!sticky) statTimer = setTimeout(() => statEl.classList.add('hide'), 3000);
+}
+
+function ns(tag) {
+  return document.createElementNS('http://www.w3.org/2000/svg', tag);
+}
+
+function flatten(node, arr = []) {
+  arr.push(node);
+  (node.children || []).forEach(c => flatten(c, arr));
+  return arr;
+}
+
+function nodeColor(d) {
+  return THEMES[theme].c[Math.min(d, 3)];
+}
+
+function redrawEdges() {
+  const eG = rootG.firstElementChild;
+  eG.innerHTML = '';
+  flatten(tree).forEach(node => {
+    (node.children || []).forEach(child => {
+      const p = ns('path');
+      const mx = (node.x + child.x) / 2;
+      p.setAttribute('d', `M${node.x},${node.y} C${mx},${node.y} ${mx},${child.y} ${child.x},${child.y}`);
+      p.setAttribute('stroke', nodeColor(child.depth));
+      p.setAttribute('stroke-width', Math.max(1, 3 - child.depth * 0.5));
+      p.setAttribute('fill', 'none');
+      p.setAttribute('opacity', '0.45');
+      eG.appendChild(p);
+    });
+  });
+}
+
+function setThemeVars(t) {
+  const T = THEMES[t];
+  const s = document.documentElement.style;
+  s.setProperty('--accent', T.a);
+  s.setProperty('--accent-dim', T.ab);
+  s.setProperty('--accent-hover', T.ah);
+}
+
+// ── Theme switcher ───────────────────────────────────────────────────────────
+document.querySelectorAll('.swatch').forEach(b => {
+  b.addEventListener('click', () => {
+    theme = b.dataset.t;
+    setThemeVars(theme);
+    document.querySelectorAll('.swatch').forEach(x => x.classList.toggle('on', x.dataset.t === theme));
+    if (tree) render();
+  });
+});
+setThemeVars('teal');
+
+$('layoutSel').addEventListener('change', e => { layout = e.target.value; if (tree) render(); });
+$('depthSel').addEventListener('change', e => { depth = +e.target.value; });
+
+// ── Layout algorithms ─────────────────────────────────────────────────────────
+function layoutRadial(node, cx, cy, a0, a1, r, d) {
+  node.x = cx; node.y = cy; node.depth = d;
+  if (!node.children?.length) return;
+  const step = (a1 - a0) / node.children.length;
+  node.children.forEach((c, i) => {
+    const a = a0 + step * (i + 0.5);
+    const nr = r * (1 + d * 0.1);
+    layoutRadial(c, cx + Math.cos(a)*nr, cy + Math.sin(a)*nr,
+      a - step*0.85/2, a + step*0.85/2, nr * 0.68, d + 1);
+  });
+}
+
+function layoutTree(node, x, y, d, xs, ys) {
+  node.x = x; node.y = y; node.depth = d;
+  if (!node.children?.length) return;
+  const n = node.children.length;
+  const tot = (n - 1) * ys;
+  node.children.forEach((c, i) =>
+    layoutTree(c, x + xs, y - tot/2 + i*ys, d+1, xs, ys * 0.8));
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render() {
+  if (!tree) return;
+
+  if (layout === 'radial')
+    layoutRadial(tree, 0, 0, -Math.PI, Math.PI, 230, 0);
+  else
+    layoutTree(tree, 0, 0, 0, 200, 88);
+
+  rootG.innerHTML = '';
+  const eG = ns('g'); rootG.appendChild(eG);
+  const nG = ns('g'); rootG.appendChild(nG);
+
+  const all = flatten(tree);
+
+  // edges
+  all.forEach(node => {
+    (node.children || []).forEach(child => {
+      const p = ns('path');
+      const mx = (node.x + child.x) / 2;
+      p.setAttribute('d', `M${node.x},${node.y} C${mx},${node.y} ${mx},${child.y} ${child.x},${child.y}`);
+      p.setAttribute('stroke', nodeColor(child.depth));
+      p.setAttribute('stroke-width', Math.max(1, 3 - child.depth * 0.5));
+      p.setAttribute('fill', 'none');
+      p.setAttribute('opacity', '0.45');
+      eG.appendChild(p);
+    });
+  });
+
+  // nodes
+  all.forEach(node => {
+    const isRoot = node.depth === 0;
+    const lbl = (node.label || '').slice(0, 24);
+    const fs = isRoot ? 15 : Math.max(11, 14 - node.depth);
+    const rw = Math.min(lbl.length * (isRoot ? 8 : 7) / 2 + 18, 115);
+    const rh = isRoot ? 21 : 15;
+
+    const g = ns('g');
+    g.setAttribute('transform', `translate(${node.x},${node.y})`);
+    g.setAttribute('cursor', 'pointer');
+    g.dataset.id = node.id;
+
+    const rect = ns('rect');
+    rect.setAttribute('x', -rw); rect.setAttribute('y', -rh);
+    rect.setAttribute('width', rw*2); rect.setAttribute('height', rh*2);
+    rect.setAttribute('rx', isRoot ? 12 : 8);
+    rect.setAttribute('fill', nodeColor(node.depth));
+    rect.setAttribute('opacity', isRoot ? '1' : '0.85');
+    if (isRoot) rect.setAttribute('filter', 'url(#dropshadow)');
+
+    const txt = ns('text');
+    txt.setAttribute('text-anchor', 'middle');
+    txt.setAttribute('dominant-baseline', 'central');
+    txt.setAttribute('fill', '#fff');
+    txt.setAttribute('font-size', fs);
+    txt.setAttribute('font-family', '-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
+    txt.setAttribute('font-weight', isRoot ? '700' : '400');
+    txt.setAttribute('pointer-events', 'none');
+    txt.textContent = lbl.length < (node.label||'').length ? lbl+'…' : lbl;
+
+    g.appendChild(rect); g.appendChild(txt);
+    nG.appendChild(g);
+
+    g.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      const r = wrap.getBoundingClientRect();
+      dragNode  = node;
+      dragOffX  = (e.clientX - r.left - vt.x) / vt.s - node.x;
+      dragOffY  = (e.clientY - r.top  - vt.y) / vt.s - node.y;
+      dragMoved = false;
+    });
+    g.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      ctxNode = node;
+      showCtx(e.clientX, e.clientY);
+    });
+    g.addEventListener('dblclick', e => {
+      e.stopPropagation();
+      beginRename(node);
+    });
+  });
+
+  applyVT();
+}
+
+// ── Pan & Zoom ────────────────────────────────────────────────────────────────
+let panning = false, ps = {x:0, y:0};
+
+wrap.addEventListener('mousedown', e => {
+  if (e.button !== 0 || e.target.closest('[data-id]')) return;
+  panning = true;
+  ps = { x: e.clientX - vt.x, y: e.clientY - vt.y };
+  wrap.classList.add('panning');
+});
+window.addEventListener('mousemove', e => {
+  if (dragNode) {
+    const r = wrap.getBoundingClientRect();
+    const nx = (e.clientX - r.left - vt.x) / vt.s - dragOffX;
+    const ny = (e.clientY - r.top  - vt.y) / vt.s - dragOffY;
+    if (!dragMoved) { pushUndo(); dragMoved = true; document.body.style.cursor = 'grabbing'; }
+    dragNode.x = nx;
+    dragNode.y = ny;
+    const gEl = rootG.querySelector(`[data-id="${dragNode.id}"]`);
+    if (gEl) gEl.setAttribute('transform', `translate(${nx},${ny})`);
+    redrawEdges();
+    return;
+  }
+  if (!panning) return;
+  vt.x = e.clientX - ps.x; vt.y = e.clientY - ps.y;
+  applyVT();
+});
+window.addEventListener('mouseup', () => {
+  if (dragNode) { dragNode = null; document.body.style.cursor = ''; return; }
+  panning = false; wrap.classList.remove('panning');
+});
+
+wrap.addEventListener('wheel', e => {
+  e.preventDefault();
+  const r = wrap.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  const d = e.deltaY > 0 ? 0.9 : 1.1;
+  const ns_ = Math.min(Math.max(vt.s * d, 0.08), 10);
+  vt.x = mx - (mx - vt.x) * (ns_ / vt.s);
+  vt.y = my - (my - vt.y) * (ns_ / vt.s);
+  vt.s = ns_;
+  applyVT();
+}, { passive: false });
+
+function applyVT() {
+  rootG.setAttribute('transform', `translate(${vt.x},${vt.y}) scale(${vt.s})`);
+}
+
+// ── Fit view ──────────────────────────────────────────────────────────────────
+$('fitBtn').addEventListener('click', fitView);
+function fitView() {
+  if (!tree) return;
+  const all = flatten(tree);
+  const xs = all.map(n => n.x), ys = all.map(n => n.y);
+  const pad = 130;
+  const x0 = Math.min(...xs)-pad, x1 = Math.max(...xs)+pad;
+  const y0 = Math.min(...ys)-pad, y1 = Math.max(...ys)+pad;
+  const W = svgEl.clientWidth, H = svgEl.clientHeight;
+  const sc = Math.min(W/(x1-x0), H/(y1-y0), 2) * 0.92;
+  vt.s = sc;
+  vt.x = (W - (x0+x1)*sc) / 2;
+  vt.y = (H - (y0+y1)*sc) / 2;
+  applyVT();
+}
+
+// ── Undo ──────────────────────────────────────────────────────────────────────
+$('undoBtn').addEventListener('click', undo);
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); }
+});
+function pushUndo() {
+  undos.push(JSON.stringify(tree));
+  if (undos.length > 40) undos.shift();
+}
+function undo() {
+  if (!undos.length) { stat('Nothing to undo.'); return; }
+  tree = JSON.parse(undos.pop());
+  render(); stat('Undone.');
+}
+
+// ── Context menu ──────────────────────────────────────────────────────────────
+function showCtx(x, y) {
+  ctxEl.style.left = x+'px'; ctxEl.style.top = y+'px';
+  ctxEl.classList.add('show');
+}
+function hideCtx() { ctxEl.classList.remove('show'); }
+document.addEventListener('click', hideCtx);
+
+$('cAdd').addEventListener('click', () => {
+  if (!ctxNode) return;
+  pushUndo();
+  const id = 'n' + Date.now();
+  ctxNode.children = ctxNode.children || [];
+  ctxNode.children.push({ id, label: 'New Node', children: [] });
+  render(); hideCtx();
+  setTimeout(() => {
+    const found = findNode(tree, id);
+    if (found) beginRename(found);
+  }, 40);
+});
+
+$('cRen').addEventListener('click', () => {
+  if (!ctxNode) return;
+  beginRename(ctxNode); hideCtx();
+});
+
+$('cDel').addEventListener('click', () => {
+  if (!ctxNode || ctxNode === tree) { stat("Can't delete root."); return; }
+  pushUndo();
+  removeNode(tree, ctxNode.id);
+  render(); hideCtx();
+});
+
+function removeNode(parent, id) {
+  if (!parent.children) return;
+  const i = parent.children.findIndex(c => c.id === id);
+  if (i !== -1) { parent.children.splice(i, 1); return; }
+  parent.children.forEach(c => removeNode(c, id));
+}
+
+function findNode(node, id) {
+  if (node.id === id) return node;
+  for (const c of (node.children || [])) {
+    const r = findNode(c, id);
+    if (r) return r;
+  }
+  return null;
+}
+
+// ── Inline rename ─────────────────────────────────────────────────────────────
+function beginRename(node) {
+  const gEl = rootG.querySelector(`[data-id="${node.id}"]`);
+  if (!gEl) return;
+  const svgR = svgEl.getBoundingClientRect();
+  const pt = svgEl.createSVGPoint();
+  pt.x = node.x; pt.y = node.y;
+  const sc = rootG.getScreenCTM();
+  const sp = pt.matrixTransform(sc);
+
+  rinEl.value = node.label;
+  rinEl.style.left = (sp.x - 55 + svgR.left) + 'px';
+  rinEl.style.top  = (sp.y - 13 + svgR.top)  + 'px';
+  rinEl.style.display = 'block';
+  rinEl.focus(); rinEl.select();
+
+  function commit() {
+    const v = rinEl.value.trim();
+    if (v && v !== node.label) { pushUndo(); node.label = v; render(); }
+    rinEl.style.display = 'none';
+    rinEl.removeEventListener('blur', commit);
+    rinEl.removeEventListener('keydown', onKey);
+  }
+  function onKey(e) {
+    if (e.key === 'Enter') commit();
+    if (e.key === 'Escape') { rinEl.style.display = 'none'; rinEl.removeEventListener('blur', commit); rinEl.removeEventListener('keydown', onKey); }
+  }
+  rinEl.addEventListener('blur', commit);
+  rinEl.addEventListener('keydown', onKey);
+}
+
+// ── Generate ──────────────────────────────────────────────────────────────────
+$('genBtn').addEventListener('click', generate);
+$('topicInput').addEventListener('keydown', e => { if (e.key === 'Enter') generate(); });
+$('regenBtn').addEventListener('click', () => { if (topic) generate(); });
+
+async function generate() {
+  const t = $('topicInput').value.trim();
+  if (!t) { stat('Please enter a topic.'); return; }
+  topic = t;
+
+  $('genBtn').disabled = true;
+  $('genBtn').innerHTML = '<span class="sp"></span>Generating…';
+  stat('Asking Claude…', true);
+
+  const depthLabel = depth === 2 ? 'root + 1 level of children'
+                   : depth === 3 ? 'root + 2 levels of children'
+                   : 'root + 3 levels of children';
+
+  const prompt = `You are a mind map generator. Return ONLY raw JSON, no markdown, no explanation.
+
+Create a mind map about: "${topic}"
+Depth: ${depthLabel}. Every non-root node label must be 2–5 words.
+Return ONLY valid JSON matching this exact shape — no markdown fences, no extra text:
+{"id":"root","label":"${topic}","children":[{"id":"unique-id","label":"2-5 words","children":[...]}]}
+Use unique string IDs for every single node.`;
+
+  try {
+    const apiUrl = window.location.origin.startsWith('http://localhost')
+      ? window.location.origin + '/api/generate'
+      : 'http://localhost:3000/api/generate';
+    const res = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: prompt }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Server error');
+
+    const json = parseJSON(data.text || '');
+    if (!json) throw new Error('Could not parse JSON from response.');
+
+    pushUndo();
+    tree = json;
+    render();
+    fitView();
+    stat('Map generated!');
+  } catch (err) {
+    stat('Error: ' + err.message);
+    console.error(err);
+  } finally {
+    $('genBtn').disabled = false;
+    $('genBtn').innerHTML = 'Generate';
+  }
+}
+
+function parseJSON(text) {
+  text = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  try { return JSON.parse(text); } catch {}
+  const m = text.match(/\{[\s\S]*\}/);
+  if (m) try { return JSON.parse(m[0]); } catch {}
+  return null;
+}
+</script>
+</body>
+</html>
